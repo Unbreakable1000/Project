@@ -32,24 +32,141 @@ details{margin:14px 0 0;background:var(--panel);border:1px solid var(--line);bor
 </div>
 <script>
 (() => {
-const chat=document.getElementById('chat'),form=document.getElementById('composer'),input=document.getElementById('messageInput'),toggle=document.getElementById('toggleMode'),badge=document.getElementById('modeBadge'),note=document.getElementById('composerNote'),notice=document.getElementById('onlineNotice'),clear=document.getElementById('clearChat');
-let onlineMode=false,replyIndex=0;
-const replies=[
-{match:/hello|hi|hey|yo|sup/i,text:"Yo! 😎 There you are. So, what's the plan? And don't say “nothing” unless you're ready for me to find us something to do."},
-{match:/sad|upset|bad day|tired|stress/i,text:"Hey. You don't have to pretend everything's fine with me. Wanna talk it out, or should I distract you for a bit?"},
-{match:/bored/i,text:"Bored already? Tragic. We could learn something, make a ridiculous plan, or challenge each other to something. Pick your poison—figuratively, obviously. 😏"},
-{match:/dream|goal|want to|future/i,text:"Then go after it. Start small if you have to, but don't shrink the dream just because the first step looks annoying. I want everything too—might as well work for it."},
-{match:/thank/i,text:"Heh, don't make it a big deal. I did it because I wanted to. ...But you're welcome. 😌"},
-{match:/joke|funny|laugh/i,text:"Oh, you want comedy? Careful. My jokes are either legendary or a crime against humor. No in-between."},
-{match:/who are you|your name|ishimi/i,text:"I'm Ishimi. Confident, ambitious, occasionally a menace, and absolutely not built to sit around waiting for life to happen. I want everything—so what's stopping us?"}
-];
-function addMessage(text,who){const bubble=document.createElement('div');bubble.className='message '+who;const sender=document.createElement('span');sender.className='sender';sender.textContent=who==='user'?'YOU':'ISHIMI';const content=document.createElement('span');content.textContent=text;bubble.append(sender,content);chat.appendChild(bubble);bubble.scrollIntoView({behavior:'smooth',block:'nearest'});}
-function offlineReply(message){const found=replies.find(item=>item.match.test(message));if(found)return found.text;const defaults=["Huh. Interesting. Keep going—I'm listening. Don't leave out the good part. 👀","Okay, I hear you. So what are you gonna do about it? We can think it through together.","Not gonna lie, that's got my attention. Explain it to me like I'm your favorite troublemaker.","Heh. You know I'm always up for a challenge. What's the next move?","I might have a few thoughts about that. First, tell me what matters most to you here."];const answer=defaults[replyIndex%defaults.length];replyIndex++;return answer;}
-toggle.addEventListener('click',()=>{onlineMode=!onlineMode;badge.textContent=onlineMode?'● Online selected':'● Offline';badge.className='mode '+(onlineMode?'online':'offline');toggle.textContent=onlineMode?'Switch to offline':'Switch to online';note.textContent=onlineMode?'Online mode is selected, but no AI service is connected yet.':'Offline mode uses preset replies. Messages stay in this page and are not sent to an AI service.';notice.hidden=!onlineMode;});
-form.addEventListener('submit',event=>{event.preventDefault();const message=input.value.trim();if(!message)return;addMessage(message,'user');input.value='';window.setTimeout(()=>addMessage(offlineReply(message),'bot'),250);});
-input.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();form.requestSubmit();}});
-clear.addEventListener('click',()=>{chat.innerHTML='';addMessage("Fresh start, huh? Works for me. 😏 So, what are we getting into now?",'bot');input.focus();});
+  const chat = document.getElementById('chat');
+  const form = document.getElementById('composer');
+  const input = document.getElementById('messageInput');
+  const toggle = document.getElementById('toggleMode');
+  const badge = document.getElementById('modeBadge');
+  const note = document.getElementById('composerNote');
+  const notice = document.getElementById('onlineNotice');
+  const clear = document.getElementById('clearChat');
+
+  let onlineMode = false;
+  let replyIndex = 0;
+  const chatHistory = [];
+
+  const replies = [
+    {match:/hello|hi|hey|yo|sup/i,text:"Yo! 😎 There you are. So, what's the plan?"},
+    {match:/sad|upset|bad day|tired|stress/i,text:"Hey. You don't have to pretend everything's fine with me. Wanna talk it out?"},
+    {match:/bored/i,text:"Bored already? Tragic. We could learn something or challenge each other. 😏"},
+    {match:/dream|goal|want to|future/i,text:"Then go after it. Start small if you have to. I want everything too—might as well work for it."},
+    {match:/thank/i,text:"Heh, don't make it a big deal. ...But you're welcome. 😌"},
+    {match:/joke|funny|laugh/i,text:"Oh, you want comedy? Careful. My jokes are either legendary or a crime against humor."},
+    {match:/who are you|your name|ishimi/i,text:"I'm Ishimi. Confident, ambitious, occasionally a menace. I want everything—so what's stopping us?"}
+  ];
+
+  function addMessage(text, who) {
+    const bubble = document.createElement('div');
+    bubble.className = 'message ' + who;
+
+    const sender = document.createElement('span');
+    sender.className = 'sender';
+    sender.textContent = who === 'user' ? 'YOU' : 'ISHIMI';
+
+    const content = document.createElement('span');
+    content.textContent = text;
+
+    bubble.append(sender, content);
+    chat.appendChild(bubble);
+    bubble.scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+
+  function offlineReply(message) {
+    const found = replies.find(item => item.match.test(message));
+    if (found) return found.text;
+
+    const defaults = [
+      "Huh. Interesting. Keep going—I'm listening. 👀",
+      "Okay, I hear you. So what are you gonna do about it?",
+      "Not gonna lie, that's got my attention. Explain it to me.",
+      "Heh. You know I'm always up for a challenge. What's the next move?",
+      "First, tell me what matters most to you here."
+    ];
+
+    const answer = defaults[replyIndex % defaults.length];
+    replyIndex++;
+    return answer;
+  }
+
+  async function askIshimi(message) {
+    const response = await fetch(
+      "https://ishimi-ai.kingcapturef.workers.dev",
+      {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          message: message,
+          history: chatHistory
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
+    }
+
+    const data = await response.json();
+    if (!data.reply) throw new Error("No reply received");
+    return data.reply;
+  }
+
+  toggle.addEventListener('click', () => {
+    onlineMode = !onlineMode;
+    badge.textContent = onlineMode ? '● Online selected' : '● Offline';
+    badge.className = 'mode ' + (onlineMode ? 'online' : 'offline');
+    toggle.textContent = onlineMode ? 'Switch to offline' : 'Switch to online';
+
+    note.textContent = onlineMode
+      ? 'Online mode sends messages to Ishimi AI.'
+      : 'Offline mode uses preset replies. Messages stay in this page.';
+
+    notice.hidden = !onlineMode;
+  });
+
+  form.addEventListener('submit', async event => {
+    event.preventDefault();
+
+    const message = input.value.trim();
+    if (!message) return;
+
+    addMessage(message, 'user');
+    input.value = '';
+
+    if (!onlineMode) {
+      addMessage(offlineReply(message), 'bot');
+      return;
+    }
+
+    chatHistory.push({role:'user', content:message});
+
+    try {
+      const reply = await askIshimi(message);
+      addMessage(reply, 'bot');
+      chatHistory.push({role:'assistant', content:reply});
+
+      if (chatHistory.length > 10) {
+        chatHistory.splice(0, chatHistory.length - 10);
+      }
+    } catch (error) {
+      addMessage("I couldn't reach my AI brain just now. Check your connection and try again. 😅", 'bot');
+      console.error(error);
+    }
+  });
+
+  input.addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  });
+
+  clear.addEventListener('click', () => {
+    chat.innerHTML = '';
+    chatHistory.length = 0;
+    addMessage("Fresh start, huh? Works for me. 😏 So, what are we getting into now?", 'bot');
+    input.focus();
+  });
 })();
-</script>
+</script>```
 </body>
 </html>
